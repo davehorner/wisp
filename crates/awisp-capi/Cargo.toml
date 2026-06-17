@@ -1,0 +1,15 @@
+[package]
+name = "awisp-capi"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "awisp_capi"
+crate-type = ["cdylib"]
+
+[dependencies]
+bevy = { version = "0.19.0-rc.2" }
+bevy_wisp = { path = "../..", features = ["audio"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+rosc = "0.10.1"

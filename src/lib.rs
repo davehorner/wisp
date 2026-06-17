@@ -95,6 +95,11 @@ pub struct WispConfig {
     /// Disable to embed the widgets in your own UI via `ui::params_ui` and
     /// `ui::errors_ui` instead (see the `editor` example).
     pub ui_window: bool,
+    /// Update `@audio` and `@audio_fft` textures from the global [`audio::WispAudio`]
+    /// resource. Hosts that need per-camera audio feeds can disable this and
+    /// drive those textures themselves.
+    #[cfg(feature = "audio")]
+    pub audio_textures: bool,
 }
 
 impl Default for WispConfig {
@@ -102,6 +107,8 @@ impl Default for WispConfig {
         Self {
             prefer_mailbox: true,
             ui_window: true,
+            #[cfg(feature = "audio")]
+            audio_textures: true,
         }
     }
 }
@@ -128,7 +135,12 @@ impl Plugin for WispPlugin {
             );
         #[cfg(feature = "audio")]
         app.init_resource::<audio::WispAudio>()
-            .add_systems(Update, audio::update_audio_textures.after(sync_wisp_inputs));
+            .add_systems(
+                Update,
+                audio::update_audio_textures
+                    .after(sync_wisp_inputs)
+                    .run_if(|config: Res<WispConfig>| config.audio_textures),
+            );
         // The panel needs `EguiPlugin`; stay inert (rather than panicking on the
         // missing resource) when the user hasn't added it.
         #[cfg(feature = "ui")]

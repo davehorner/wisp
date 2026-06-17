@@ -12,7 +12,7 @@ license = "MIT OR Apache-2.0"
 edition = "2024"
 
 [workspace]
-members = ["editor"]
+members = ["editor", "crates/awisp-capi"]
 
 [dependencies]
 # Pinned to the Bevy 0.19 release candidates while awaiting the stable release;

@@ -58,7 +58,7 @@ impl WispAudio {
 
     /// The most recent `samples` samples per channel, zero-padded at the front,
     /// one row per channel.
-    fn waveform(&self, samples: usize) -> Vec<f32> {
+    pub fn waveform(&self, samples: usize) -> Vec<f32> {
         let mut rows = vec![0.0; samples * self.channels()];
         for (channel, row) in rows.chunks_mut(samples).enumerate() {
             let Some(ring) = self.rings.get(channel) else {
@@ -75,7 +75,7 @@ impl WispAudio {
 
     /// Hann-windowed linear FFT magnitudes, `bins` per channel, one row per
     /// channel. The window is `2 * bins` samples.
-    fn fft(&mut self, bins: usize) -> Vec<f32> {
+    pub fn fft(&mut self, bins: usize) -> Vec<f32> {
         let window = (bins * 2).clamp(2, RING_CAPACITY);
         let fft = self
             .ffts
@@ -106,7 +106,7 @@ impl WispAudio {
 }
 
 /// Keep every wisp camera's `@audio`/`@audio_fft` textures up to date.
-pub(crate) fn update_audio_textures(
+pub fn update_audio_textures(
     mut audio: ResMut<WispAudio>,
     wisps: Res<Assets<Wisp>>,
     mut images: ResMut<Assets<Image>>,
@@ -139,7 +139,7 @@ pub(crate) fn update_audio_textures(
 
 /// Write one row of `f32`s per channel into the named input's `r16float` image,
 /// (re)creating it when missing or the wrong size.
-fn write_audio_image(
+pub fn write_audio_image(
     images: &mut Assets<Image>,
     inputs: &mut WispInputs,
     name: &str,

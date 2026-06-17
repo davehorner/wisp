@@ -407,6 +407,7 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: String::from("bevy_wisp - editor"),
+                    window_level: bevy::window::WindowLevel::AlwaysOnTop,
                     // Let the canvas track its parent element on the web build;
                     // ignored on native.
                     fit_canvas_to_parent: true,

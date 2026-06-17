@@ -78,6 +78,136 @@ with saves reloading the shader in place:
 cargo run -p wisp-editor
 ```
 
+## BespokeSynth embedding
+
+This checkout also carries a small C ABI crate, `awisp-capi`, used by the
+`Awisp` module in the [`davehorner/BespokeSynth_gen`](https://github.com/davehorner/BespokeSynth_gen)
+fork of BespokeSynth. Bespoke embeds one persistent Bevy/Wisp app and switches
+shaders inside that app instead of launching a separate process for each shader.
+
+Build the embedding library with:
+
+```sh
+cargo build -p awisp-capi --release
+```
+
+When built through BespokeSynth, CMake sets `BESPOKE_AWISP_ROOT` to this
+checkout and copies the produced `awisp_capi` dynamic library next to the
+Bespoke executable. The Wisp editor is also built and copied as `wisp-editor`
+(`wisp-editor.exe` on Windows); the Awisp module's `edit` checkbox launches
+that editor from Bespoke.
+
+The C ABI currently exposes:
+
+- the bundled shader list;
+- embedded window open/load/show/geometry control;
+- shader param reflection for sliders, checkboxes, integer sliders and
+  `@values` dropdowns;
+- immediate param updates into the running `WispInputs`;
+- interleaved audio frames for Wisp's `audio` feature;
+- localhost OSC/UDP control for the running embedded instance.
+
+Inside Bespoke, WGSL params are reflected from the shader source in the same
+way as the editor UI. Supported controls are:
+
+| WGSL input | Bespoke control |
+|---|---|
+| `f32` | slider |
+| `vec2<f32>` / `vec3<f32>` / `vec4<f32>` | component sliders |
+| `u32` annotated `@bool` | checkbox |
+| `i32` / `u32` with `@values` and optional `@labels` | dropdown |
+| `i32` / `u32` without `@values` | integer slider |
+
+Awisp also has a `music auto` checkbox and amount slider. When enabled,
+Bespoke measures the incoming audio RMS level and gently modulates numeric and
+vector params around their `@default` values. The same audio stream is pushed
+to Wisp, so shaders using `/// @audio(...)` or `/// @audio_fft(...)` textures
+receive the module's audio input.
+
+Plain image inputs are handled specially for embedding. Wisp's normal default
+image handle is only a placeholder, which can make image-input shaders render
+white. The embedded runner seeds every `TextureRole::ImageInput` with a small
+generated checker/stripe texture unless the shader or host supplies another
+image. This makes bundled shaders such as `wisp/test_image.wgsl` render
+visibly inside Bespoke without needing an external image picker yet.
+
+### OSC / UDP control
+
+The Bespoke Awisp module has a `port` control, defaulting to `7941`. When an
+embedded Awisp instance opens, `awisp-capi` listens on `127.0.0.1:<port>` and
+accepts either OSC packets or simple text UDP commands. The OSC namespace is:
+
+```text
+/awisp/wisp/*
+```
+
+Common incoming OSC addresses:
+
+```text
+/awisp/wisp/discover
+/awisp/wisp/subscribe               bool_or_number
+/awisp/wisp/unsubscribe
+/awisp/wisp/shader                  string shader_path
+/awisp/wisp/visible                 bool_or_number
+/awisp/wisp/window/titlebar         bool_or_number
+/awisp/wisp/window/titlebar/hide
+/awisp/wisp/window/geometry         int x, int y, int width, int height
+/awisp/wisp/image                   string image_path
+/awisp/wisp/media/load              string image_path
+/awisp/wisp/param/<id>              1-4 numeric values
+/awisp/wisp/color/<id>              3-4 numeric values
+/awisp/wisp/bool/<id>               bool_or_number
+/awisp/wisp/checkbox/<id>           bool_or_number
+/awisp/wisp/i32/<id>                int value
+/awisp/wisp/u32/<id>                int value
+/awisp/wisp/audio                  int channels, float samples...
+/awisp/wisp/audio_pcm              int channels, float samples...
+```
+
+Equivalent text UDP commands include:
+
+```text
+shader wisp/test_image.wgsl
+visible 1
+hide
+titlebar 0
+geometry 100 100 960 540
+image C:/path/to/image.png
+set_f32 gain 0.75
+set_vec2 offset 0.1 0.2
+set_vec3 color 1.0 0.2 0.0
+set_vec4 tint 1.0 0.5 0.25 1.0
+set_bool wobble 1
+set_i32 mode 2
+set_u32 count 8
+audio 2 0.0 0.0 0.25 0.25
+```
+
+Send `/awisp/wisp/discover` to register the sender as the current feedback
+target and receive the current reflected control surface. `/awisp/wisp/subscribe`
+also registers the sender and enables or disables ongoing feedback echoes.
+Awisp replies from an ephemeral localhost UDP socket to the sender address with:
+
+```text
+/awisp/wisp/status                  string status
+/awisp/wisp/error                   string error
+/awisp/wisp/shader                  string shader_path
+/awisp/wisp/param_count             int count
+/awisp/wisp/param_desc              int index, string id, string label,
+                                    string type, int component_count,
+                                    float min, float max, float step,
+                                    float default0..default3,
+                                    bool is_color, string options
+/awisp/wisp/param/<id>              current value echo
+/awisp/wisp/visible                 bool visible
+/awisp/wisp/window/titlebar         bool visible
+/awisp/wisp/window/geometry         int x, int y, int width, int height
+/awisp/wisp/image                   string image_path
+```
+
+The `options` field in `/awisp/wisp/param_desc` is a compact
+`value:label|value:label` string for reflected dropdown values.
+
 The editor also builds for the web. Serve it locally with `trunk serve` (or
 `nix run .#serve-wisp-editor-web`); pushes to `main` publish it to GitHub Pages.
 On the web only the bundled shaders are available and saving is disabled.
