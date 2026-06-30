@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "macos", allow(dead_code, unused_imports))]
+
 use bevy::app::App;
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::RenderTarget;
@@ -1602,6 +1604,25 @@ pub unsafe extern "C" fn awisp_param_option_value(
 }
 
 #[unsafe(no_mangle)]
+#[cfg(target_os = "macos")]
+pub unsafe extern "C" fn awisp_instance_open_embedded(
+    _asset_root: *const c_char,
+    _shader_name: *const c_char,
+    _window_title: *const c_char,
+    _window_x: i32,
+    _window_y: i32,
+    _window_width: u32,
+    _window_height: u32,
+) -> *mut AwispInstance {
+    set_last_error(
+        "awisp embedded windows are unavailable on macOS because winit requires \
+         its event loop on the process main thread",
+    );
+    ptr::null_mut()
+}
+
+#[unsafe(no_mangle)]
+#[cfg(not(target_os = "macos"))]
 pub unsafe extern "C" fn awisp_instance_open_embedded(
     asset_root: *const c_char,
     shader_name: *const c_char,
@@ -2000,4 +2021,72 @@ pub extern "C" fn awisp_last_error() -> *const c_char {
     last_error_cell()
         .lock()
         .map_or(ptr::null(), |value| value.as_ptr())
+}
+
+pub fn awisp_runner_main() {
+    let mut args = std::env::args().skip(1);
+    let asset_root = args.next().unwrap_or_else(|| "assets".to_string());
+    let shader_name = args
+        .next()
+        .unwrap_or_else(|| "wisp/test_float.wgsl".to_string());
+    let window_title = args.next().unwrap_or_else(|| "Awisp".to_string());
+    let window_x = args.next().and_then(|value| value.parse().ok()).unwrap_or(140);
+    let window_y = args.next().and_then(|value| value.parse().ok()).unwrap_or(140);
+    let window_width = args
+        .next()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(800);
+    let window_height = args
+        .next()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(600);
+    let remote_port = args
+        .next()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(7941);
+
+    let instance_id = next_instance_id();
+    let (sender, receiver) = mpsc::channel();
+    let status = Arc::new(AtomicU8::new(STATUS_RUNNING));
+    let error = Arc::new(Mutex::new(CString::new("").unwrap()));
+    let asset_root_state = Arc::new(Mutex::new(asset_root.clone()));
+    let current_shader = Arc::new(Mutex::new(shader_name.clone()));
+    let feedback_target = Arc::new(Mutex::new(None));
+    let feedback_enabled = Arc::new(Mutex::new(false));
+
+    if let Err(message) = spawn_remote_listener(
+        sender,
+        instance_id,
+        remote_port,
+        asset_root_state,
+        current_shader,
+        feedback_target,
+        feedback_enabled,
+    ) {
+        eprintln!("{message}");
+    }
+
+    let run = || {
+        run_awisp_app(
+            instance_id,
+            asset_root,
+            shader_name,
+            window_title,
+            window_x,
+            window_y,
+            window_width.max(1),
+            window_height.max(1),
+            receiver,
+        );
+    };
+
+    if let Err(payload) = panic::catch_unwind(AssertUnwindSafe(run)) {
+        let message = panic_message(payload);
+        set_instance_error(&error, message.clone());
+        set_last_error(message.clone());
+        status.store(STATUS_PANICKED, Ordering::Release);
+        eprintln!("{message}");
+    } else {
+        status.store(STATUS_EXITED, Ordering::Release);
+    }
 }
