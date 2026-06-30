@@ -4,8 +4,8 @@ use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::window::{
-    ExitCondition, PrimaryWindow, WindowLevel, WindowPlugin, WindowPosition, WindowRef,
-    WindowResolution,
+    ExitCondition, PrimaryWindow, WindowCloseRequested, WindowLevel, WindowPlugin, WindowPosition,
+    WindowRef, WindowResolution,
 };
 use bevy_wisp::asset::Wisp;
 use bevy_wisp::prelude::*;
@@ -1349,6 +1349,17 @@ fn update_instance_audio_textures(
     }
 }
 
+fn hide_window_when_close_requested(
+    mut close_events: MessageReader<WindowCloseRequested>,
+    mut windows: Query<&mut Window>,
+) {
+    for event in close_events.read() {
+        if let Ok(mut window) = windows.get_mut(event.window) {
+            window.visible = false;
+        }
+    }
+}
+
 fn run_awisp_app(
     instance_id: u64,
     asset_root: String,
@@ -1391,7 +1402,8 @@ fn run_awisp_app(
                         decorations: true,
                         ..default()
                     }),
-                    exit_condition: ExitCondition::OnAllClosed,
+                    exit_condition: ExitCondition::DontExit,
+                    close_when_requested: false,
                     ..default()
                 }),
             WispPlugin,
@@ -1402,6 +1414,7 @@ fn run_awisp_app(
             Update,
             poll_control.before(bevy_wisp::audio::update_audio_textures),
         )
+        .add_systems(Update, hide_window_when_close_requested)
         .add_systems(Update, update_instance_audio_textures.after(poll_control))
         .run();
 }
